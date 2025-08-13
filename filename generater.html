@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>檔名自動生成工具</title>
+  <style>
+    :root { --bg:#0f172a; --panel:#111827; --muted:#6b7280; --text:#e5e7eb; --accent:#22c55e; --card:#0b1220; --border:#1f2937; }
+    html,body{height:100%}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:linear-gradient(180deg,#0b1220 0%, #0f172a 100%); color:var(--text);}
+    .wrap{max-width:1100px; margin:24px auto; padding:0 16px 64px}
+    h1{font-size:clamp(22px,4vw,32px); margin:8px 0 16px; letter-spacing:.5px}
+    .subtitle{color:var(--muted); margin-bottom:20px}
+    .grid{display:grid; gap:14px}
+    .grid.cols-3{grid-template-columns:repeat(3,1fr)}
+    .grid.cols-4{grid-template-columns:repeat(4,1fr)}
+    .card{background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:16px; padding:16px}
+    label{display:block; font-size:12px; color:#94a3b8; margin-bottom:6px}
+    select,input{width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#0b1220; color:var(--text)}
+    input[readonly]{opacity:.9}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .btn{cursor:pointer; padding:10px 14px; border-radius:12px; border:1px solid var(--border); background:#111827; color:var(--text);}
+    .btn.primary{background:linear-gradient(90deg,#22c55e,#16a34a); border:0; color:#051b0f; font-weight:700}
+    .btn.ghost{background:transparent; border:1px dashed var(--border);}
+    .btn:disabled{opacity:.5; cursor:not-allowed}
+    .files{margin-top:14px}
+    .file{display:flex; align-items:center; justify-content:space-between; gap:10px; background:#0b1220; border:1px solid var(--border); border-radius:12px; padding:10px 12px}
+    .file code{white-space:nowrap; overflow:auto; scrollbar-width:thin; font-size:12.5px}
+    .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#0f766e; color:white; font-size:12px; margin-left:8px}
+    .hint{font-size:12px; color:#9aa5b1}
+    .footer{margin-top:26px; color:#9aa5b1; font-size:12px}
+    .ok{color:#22c55e}
+    .warn{color:#f59e0b}
+    .danger{color:#ef4444}
+    .divider{height:1px; background:var(--border); margin:14px 0}
+    @media (max-width:900px){ .grid.cols-3,.grid.cols-4{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📁 檔名自動生成工具</h1>
+    <div class="subtitle">三層選單（BU → C/S → Project）選定後自動帶出欄位，按一下即可生成 19 種檔名。#10「FU package」使用特殊規則。</div>
+
+    <div class="card">
+      <div class="grid cols-3">
+        <div>
+          <label>BU</label>
+          <select id="bu"></select>
+        </div>
+        <div>
+          <label>C/S</label>
+          <select id="cs"></select>
+        </div>
+        <div>
+          <label>Project name</label>
+          <select id="project"></select>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="grid cols-4">
+        <div>
+          <label>Model name</label>
+          <input id="model" readonly />
+        </div>
+        <div>
+          <label>LNV ASM</label>
+          <input id="asm" readonly />
+        </div>
+        <div>
+          <label>LNV FRU</label>
+          <input id="fru" readonly />
+        </div>
+        <div>
+          <label>Cell type</label>
+          <input id="cell" readonly />
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="grid cols-4">
+        <div>
+          <label>Phase</label>
+          <select id="phase">
+            <option value="FVT">FVT</option>
+            <option value="SIT">SIT</option>
+            <option value="SITR">SITR</option>
+            <option value="SVT">SVT</option>
+            <option value="MP">MP</option>
+          </select>
+        </div>
+        <div>
+          <label>日期 (YYYYMMDD, Asia/Taipei)</label>
+          <input id="date" readonly />
+        </div>
+        <div class="row" style="align-self:end">
+          <button class="btn" id="refreshDate" title="重新以台北時區更新日期">↻ 更新日期</button>
+          <button class="btn ghost" id="reset">重設</button>
+        </div>
+        <div class="row" style="align-self:end; justify-content:flex-end">
+          <button class="btn primary" id="gen" disabled>⚡ 生成 19 個檔名</button>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:8px">一般規則：<code>Model name _ LNV ASM _ file type _ phase _ date</code>；#10「FU package」：<code>EFI _ Model name _ LNV ASM _ LNV FRU _ phase</code>（無日期）。</div>
+    </div>
+
+    <div id="output" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between; margin-bottom:6px">
+        <div>已生成 <span id="count" class="badge">0</span></div>
+        <div class="row">
+          <button class="btn" id="copyAll">複製全部</button>
+          <button class="btn" id="downloadTxt">下載 .txt</button>
+        </div>
+      </div>
+      <div class="files" id="files"></div>
+    </div>
+
+    <div class="footer">提示：若 LNV FRU 為空，#10 規則會自動忽略該欄位避免雙底線。</div>
+  </div>
+
+<script>
+// === 1) 寫死的資料（JSON） ===
+const PROJECTS = [
+  { project:"Curie-1 90Wh", model:"L23C4P70", asm:"SB11M37548", fru:"5B11M37552", cell:"COSCA3656D9Q", cs:"CS24", bu:"TBG" },
+  { project:"Eiger", model:"L23C3P70", asm:"SB11H56307", fru:"5B11H56406", cell:"BYD498568", cs:"CS24", bu:"TBG" },
+  { project:"T16 52.5Wh (FRU)", model:"L23C4P71", asm:"SB11H56310", fru:"5B11H56409", cell:"ATL536656", cs:"CS24", bu:"TBG" },
+  { project:"T16 86Wh (CRU)", model:"L23C4P72", asm:"SB11H56312", fru:"5B11H56411", cell:"BYD547478", cs:"CS24", bu:"TBG" },
+  { project:"T14 39.3Wh (FRU)", model:"L23C3P71", asm:"SB11H56314", fru:"5B11H56413", cell:"ATL536656", cs:"CS24", bu:"TBG" },
+  { project:"T14 52.5Wh (CRU)", model:"L23C4P73", asm:"SB11H56317", fru:"5B11H56416", cell:"ATL536656", cs:"CS24", bu:"TBG" },
+  { project:"Thinkbook 13X Gen4 74Wh", model:"L23C4PE1", asm:"SB11M35209", fru:"", cell:"COSCA5042A9Q", cs:"X90", bu:"LBG" },
+  { project:"C590 57Wh", model:"L23C3PE1", asm:"SB11M74072", fru:"5B11M74077", cell:"COS595490G-N", cs:"X90", bu:"LBG" },
+  { project:"S790-14.5 70Wh", model:"L23C4PF2", asm:"SB11N42052", fru:"5B11N42051", cell:"COS4645C0F", cs:"X90", bu:"LBG" },
+  { project:"Cloudbook 14 35Wh", model:"L23C2PG3", asm:"SB11N50700", fru:"5B11N50697", cell:"BYD4645C0", cs:"X90", bu:"LBG" },
+  { project:"S790-14 65Wh", model:"L22C4PF1", asm:"SB11J63615", fru:"5B11J63614", cell:"BYD4742C0", cs:"X90", bu:"LBG" },
+  { project:"S790-14.5pro 73Wh", model:"L22C4PF4", asm:"SB11K24758", fru:"5B11K24754", cell:"BYD5040D2H", cs:"X90", bu:"LBG" },
+  { project:"Eiger NEC", model:"L24C3P70", asm:"SB11M89897", fru:"5B11M90096", cell:"BYD 498568", cs:"CS23", bu:"TBG" },
+  { project:"TM-2", model:"L24C3P71", asm:"SB11M89899", fru:"5B11M90098", cell:"ATL 467079-100H/L", cs:"CS25", bu:"TBG" },
+  { project:"100W-CL-2 (CRU)", model:"L24C3P73", asm:"SB11M89917", fru:"5B11M90116", cell:"BYD 485490C", cs:"CS25", bu:"TBG" },
+  { project:"Eiger-2 (CRU)", model:"L24C3P72", asm:"SB11M89907", fru:"5B11M90106", cell:"BYD 498568", cs:"CS25", bu:"TBG" },
+  { project:"T16 52.5Wh-2 (CRU)", model:"L24C4P70", asm:"SB11M89904", fru:"5B11M90103", cell:"ATL536656", cs:"CS25", bu:"TBG" },
+  { project:"T14-2 57Wh", model:"L24C4P71", asm:"SB11M89927", fru:"5B11M90126", cell:"CA546656Q-Q1", cs:"CS25", bu:"TBG" },
+  { project:"L13 41Wh (Abby)", model:"L24C3P74", asm:"SB11M89932", fru:"5B11M90131", cell:"CA4338A9-Q1", cs:"CS25", bu:"TBG" },
+  { project:"T Series 60Wh", model:"L25C3P72", asm:"SB11M89974", fru:"5B11M90173", cell:"ATL 615780R", cs:"CS26", bu:"TBG" },
+  { project:"T Series 75Wh", model:"L25C3P73", asm:"SB11M89975", fru:"5B11M90174", cell:"ATL 705780R", cs:"CS26", bu:"TBG" },
+  { project:"Abby-2 (Refresh) L13-2 41Wh", model:"L24C3P74", asm:"SB11M89951", fru:"5B11M90150", cell:" COS CA4338A9Q-Q1-Co", cs:"CS26", bu:"TBG" },
+  { project:"S5X0-13/15 54.7Wh (Co-Recycle)", model:"L24C4PK1", asm:"SB11T94728", fru:"5B11T94729", cell:"ATL 4338A9-Co", cs:"CS26", bu:"LBG" },
+  { project:"S5X0-13/15 54.7Wh NEC (Co-Recycle)", model:"L24C4PK2", asm:"SB11T94736", fru:"5B11T94727", cell:"ATL 485490P3", cs:"CS26", bu:"LBG" },
+  { project:"SMB V series 47Wh", model:"L25C3PG4", asm:"SB11U25231", fru:"5B11U25234", cell:"ATL 485490P3", cs:"CS26", bu:"LBG" },
+];
+
+// 檔案種類（1~19），第 10 項為特殊規則
+const FILE_TYPES = [
+  "BMU Spec","Battery Spec","EC List","FW change list","2D drawing","3D drawing",
+  "FAI_CPK_Weight","Label artwork_1","Label artwork_2","FU package","Q-Test report","IQC Photo",
+  "Drop test report","PI965_Air","PI965_Road","PI965_Sea","Stacking report","UN38.3.5 test report","UN38.3"
+];
+
+// === 2) DOM 參考 ===
+const $ = s=>document.querySelector(s);
+const buSel = $('#bu');
+const csSel = $('#cs');
+const prjSel = $('#project');
+const modelInp = $('#model');
+const asmInp = $('#asm');
+const fruInp = $('#fru');
+const cellInp = $('#cell');
+const phaseSel = $('#phase');
+const dateInp = $('#date');
+const genBtn = $('#gen');
+const outBox = $('#output');
+const filesBox = $('#files');
+const countBadge = $('#count');
+const copyAllBtn = $('#copyAll');
+const downloadBtn = $('#downloadTxt');
+
+// === 3) 公用函式 ===
+const uniq = arr => [...new Set(arr)];
+const by = k => (a,b)=> (a[k]||'').localeCompare(b[k]||'');
+const fmtTaipeiDate = (d=new Date()) => {
+  // 以台北時區轉字串後再組 YYYYMMDD
+  const parts = new Intl.DateTimeFormat('zh-TW',{ timeZone:'Asia/Taipei', year:'numeric', month:'2-digit', day:'2-digit' })
+    .formatToParts(d)
+    .reduce((acc,p)=> (acc[p.type]=p.value, acc),{});
+  return `${parts.year}${parts.month}${parts.day}`; // YYYYMMDD
+};
+const joinNonEmpty = (arr, sep='_') => arr.filter(x=>String(x||'').trim().length>0).join(sep);
+
+// === 4) 初始化下拉 ===
+function initSelects(){
+  // BU
+  const bus = uniq(PROJECTS.map(p=>p.bu)).sort();
+  buSel.innerHTML = `<option value="" disabled selected>請選擇 BU</option>` + bus.map(b=>`<option>${b}</option>`).join('');
+  csSel.innerHTML = `<option value="" disabled selected>請先選 BU</option>`;
+  prjSel.innerHTML = `<option value="" disabled selected>請先選 C/S</option>`;
+  // 日期
+  dateInp.value = fmtTaipeiDate();
+}
+
+// === 5) 事件 ===
+buSel.addEventListener('change', e=>{
+  const bu = e.target.value;
+  const cs = uniq(PROJECTS.filter(p=>p.bu===bu).map(p=>p.cs)).sort();
+  csSel.innerHTML = `<option value="" disabled selected>請選擇 C/S</option>` + cs.map(c=>`<option>${c}</option>`).join('');
+  prjSel.innerHTML = `<option value="" disabled selected>請先選 C/S</option>`;
+  clearDetails();
+  genBtn.disabled = true;
+});
+
+csSel.addEventListener('change', e=>{
+  const bu = buSel.value; const cs = e.target.value;
+  const projects = PROJECTS.filter(p=>p.bu===bu && p.cs===cs).sort(by('project'));
+  prjSel.innerHTML = `<option value="" disabled selected>請選擇 Project</option>` + projects.map((p,i)=>`<option value="${p.project}">${p.project}</option>`).join('');
+  clearDetails();
+  genBtn.disabled = true;
+});
+
+prjSel.addEventListener('change', ()=>{
+  const p = PROJECTS.find(x=>x.project===prjSel.value && x.bu===buSel.value && x.cs===csSel.value);
+  if(!p){ clearDetails(); genBtn.disabled=true; return; }
+  modelInp.value = p.model; asmInp.value = p.asm; fruInp.value = p.fru; cellInp.value = p.cell;
+  genBtn.disabled = false;
+});
+
+$('#refreshDate').addEventListener('click', ()=>{ dateInp.value = fmtTaipeiDate(); });
+$('#reset').addEventListener('click', ()=>{ initSelects(); clearDetails(); outBox.style.display='none'; filesBox.innerHTML=''; countBadge.textContent='0'; genBtn.disabled=true; });
+
+function clearDetails(){ modelInp.value = asmInp.value = fruInp.value = cellInp.value = ''; }
+
+// === 6) 生成邏輯 ===
+function buildFilenames(){
+  const model = modelInp.value.trim();
+  const asm = asmInp.value.trim();
+  const fru = fruInp.value.trim();
+  const date = dateInp.value.trim();
+  const phase = phaseSel.value.trim();
+
+  if(!model || !asm || !phase || !date){ return []; }
+
+  const list = [];
+  FILE_TYPES.forEach((type, idx)=>{
+    let name;
+    if(idx===9){
+      // 第 10 個（idx 9）：EFI + _ + Model + _ + ASM + _ + FRU + _ + Phase  （無日期）
+      name = joinNonEmpty([ 'EFI', model, asm, fru, phase ], '_');
+    }else{
+      // 一般規則：Model _ ASM _ filetype _ phase _ date
+      name = joinNonEmpty([ model, asm, type, phase, date ], '_');
+    }
+    list.push({ idx: idx+1, type, name });
+  });
+  return list;
+}
+
+// 渲染
+function render(list){
+  filesBox.innerHTML = '';
+  list.forEach(item=>{
+    const row = document.createElement('div');
+    row.className = 'file';
+    row.innerHTML = `
+      <div>
+        <div style="font-size:12px; color:#9aa5b1">${item.idx}. ${item.type}</div>
+        <code>${item.name}</code>
+      </div>
+      <div class="row">
+        <button class="btn" data-copy="${encodeURIComponent(item.name)}">複製</button>
+      </div>`;
+    filesBox.appendChild(row);
+  });
+  countBadge.textContent = String(list.length);
+  outBox.style.display = 'block';
+}
+
+// 生成按鈕
+genBtn.addEventListener('click', ()=>{
+  const list = buildFilenames();
+  if(list.length===0){ alert('請先完成選擇。'); return; }
+  render(list);
+});
+
+// 單列複製
+filesBox.addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-copy]');
+  if(!btn) return;
+  const text = decodeURIComponent(btn.getAttribute('data-copy'));
+  navigator.clipboard.writeText(text).then(()=>{
+    btn.textContent = '已複製';
+    setTimeout(()=>btn.textContent='複製',900);
+  });
+});
+
+// 全部複製
+copyAllBtn.addEventListener('click', ()=>{
+  const lines = [...filesBox.querySelectorAll('code')].map(c=>c.textContent).join('\n');
+  if(!lines){ return; }
+  navigator.clipboard.writeText(lines).then(()=>{
+    copyAllBtn.textContent = '全部已複製';
+    setTimeout(()=>copyAllBtn.textContent='複製全部',1000);
+  });
+});
+
+// 下載 txt
+downloadBtn.addEventListener('click', ()=>{
+  const lines = [...filesBox.querySelectorAll('code')].map(c=>c.textContent).join('\n');
+  if(!lines){ return; }
+  const blob = new Blob([lines], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'filenames.txt'; a.click();
+  setTimeout(()=> URL.revokeObjectURL(url), 500);
+});
+
+// 啟動
+initSelects();
+</script>
+</body>
+</html>
